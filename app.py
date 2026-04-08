@@ -1,70 +1,66 @@
 import streamlit as st
 import pandas as pd
-import io
+import re
 
-st.set_page_config(page_title="CSV Generator", layout="wide")
-
-st.title("📄 Comprehension CSV Generator")
-
-st.markdown("Generate upload-ready CSV for ComprehensionSprint")
-
-# -------------------------
-# INPUTS
-# -------------------------
+st.title("📄 Comprehension CSV Auto Generator")
 
 title = st.text_input("Passage Title")
+difficulty = st.selectbox("Difficulty", ["Foundation","Elementary","Intermediate","Advanced"])
 
-difficulty = st.selectbox(
-    "Difficulty",
-    ["Foundation", "Elementary", "Intermediate", "Advanced"]
-)
+raw_input = st.text_area("Paste Passage + Questions", height=400)
 
-passage_text = st.text_area("Passage Text", height=300)
+def parse_input(text):
+    passage = ""
+    questions = []
 
-num_questions = st.number_input("Number of Questions", min_value=1, max_value=20, value=5)
+    # Split passage and questions
+    parts = text.split("Questions:")
+    passage = parts[0].replace("Passage:", "").strip()
 
-questions = []
+    if len(parts) > 1:
+        q_block = parts[1]
 
-for i in range(num_questions):
-    st.markdown(f"### Question {i+1}")
+        q_splits = re.split(r"\n\d+\.", q_block)
 
-    q_text = st.text_input(f"Question {i+1}", key=f"q{i}")
+        for q in q_splits:
+            if not q.strip():
+                continue
 
-    col1, col2 = st.columns(2)
+            lines = q.strip().split("\n")
 
-    with col1:
-        opt_a = st.text_input("Option A", key=f"a{i}")
-        opt_b = st.text_input("Option B", key=f"b{i}")
+            q_text = lines[0]
+            options = {"A":"", "B":"", "C":"", "D":""}
+            correct = ""
 
-    with col2:
-        opt_c = st.text_input("Option C", key=f"c{i}")
-        opt_d = st.text_input("Option D", key=f"d{i}")
+            for line in lines[1:]:
+                if line.startswith("A."):
+                    options["A"] = line[2:].strip()
+                elif line.startswith("B."):
+                    options["B"] = line[2:].strip()
+                elif line.startswith("C."):
+                    options["C"] = line[2:].strip()
+                elif line.startswith("D."):
+                    options["D"] = line[2:].strip()
+                elif "Answer:" in line:
+                    correct = line.split(":")[1].strip()
 
-    correct = st.selectbox(
-        "Correct Answer",
-        ["A", "B", "C", "D"],
-        key=f"correct{i}"
-    )
+            questions.append({
+                "question_text": q_text,
+                "option_a": options["A"],
+                "option_b": options["B"],
+                "option_c": options["C"],
+                "option_d": options["D"],
+                "correct_answer": correct
+            })
 
-    questions.append({
-        "question_text": q_text,
-        "option_a": opt_a,
-        "option_b": opt_b,
-        "option_c": opt_c,
-        "option_d": opt_d,
-        "correct_answer": correct
-    })
-
-# -------------------------
-# GENERATE CSV
-# -------------------------
+    return passage, questions
 
 if st.button("Generate CSV"):
+    passage_text, questions = parse_input(raw_input)
 
     rows = []
 
     for i, q in enumerate(questions):
-
         rows.append({
             "new_passage": 1 if i == 0 else 0,
             "title": title,
@@ -82,13 +78,10 @@ if st.button("Generate CSV"):
 
     df = pd.DataFrame(rows)
 
-    # FIX: UTF-8-SIG for Excel compatibility
     csv = df.to_csv(index=False, encoding="utf-8-sig")
 
-    st.success("CSV generated successfully!")
-
     st.download_button(
-        label="Download CSV",
+        "Download CSV",
         data=csv,
         file_name=f"{title.replace(' ', '_')}.csv",
         mime="text/csv"
